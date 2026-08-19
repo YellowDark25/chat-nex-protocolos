@@ -386,6 +386,8 @@ module Nex
       return payload['payload'] if payload.is_a?(Hash) && payload['payload']
 
       payload
+    rescue Nex::Error
+      []
     end
 
     def serialize_account_user(agent)
