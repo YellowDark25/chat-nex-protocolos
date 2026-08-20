@@ -667,6 +667,62 @@ tr:last-child td {
   font-weight: 500;
 }
 
+.field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dictation-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dictation-mic,
+.dictation-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.dictation-mic:hover,
+.dictation-play:hover {
+  color: var(--accent-soft);
+}
+
+.dictation-mic.listening {
+  color: var(--danger);
+  background: rgba(229, 70, 102, 0.12);
+}
+
+.dictation-mic:disabled,
+.dictation-play:disabled,
+.dictation-transcribe:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.dictation-transcribe {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: 500 12px Inter, system-ui, sans-serif;
+}
+
 .field input,
 .field select,
 .field textarea,

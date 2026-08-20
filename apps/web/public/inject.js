@@ -4,7 +4,7 @@
   const FRAME_ID = 'nex-chamados-frame';
   const DIALOG_ID = 'nex-chamados-dialog';
   const LOG = '[nex-chamados]';
-  const ASSET_VERSION = '20260819d';
+  const ASSET_VERSION = '20260820g';
   const MOBILE_LAUNCHER_ID = 'nex-mobile-sidebar-launcher';
   const MOBILE_MQ = '(max-width: 767px)';
   const RESUMO_MAX = 255;
@@ -16,6 +16,19 @@
   const NAV_ACTIVE_CLASS = 'text-n-slate-12 bg-n-alpha-2 font-medium';
   const CLIPBOARD_ICON =
     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>';
+  const MIC_ICON =
+    '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>';
+  const PAUSE_ICON =
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7 5h4v14H7V5Zm6 0h4v14h-4V5Z"/></svg>';
+  const PLAY_ICON =
+    '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7-11-7Z"/></svg>';
+  const RECORDER_MIME_CANDIDATES = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus'
+  ];
+  let stopCreateDialogMic = () => {};
 
   function accountIdFromLocation() {
     const parts = window.location.pathname.split('/');
@@ -66,6 +79,23 @@
       credentials: 'include',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `API ${response.status}`);
+    return payload;
+  }
+
+  async function apiPostFile(path, file) {
+    const body = new FormData();
+    body.append('body', '');
+    body.append('files[]', file, file.name || 'audio.webm');
+    const headers = authHeaders();
+    delete headers.Accept;
+    const response = await fetch(`/chamados-api${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `API ${response.status}`);
@@ -348,13 +378,21 @@
     openPanel('/chamados/');
   }
 
-  function fieldBlock(label, control) {
-    const wrap = document.createElement('label');
+  function fieldBlock(label, control, extras = {}) {
+    const wrap = document.createElement(extras.action ? 'div' : 'label');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;min-width:0';
     const caption = document.createElement('span');
     caption.textContent = label;
     caption.style.cssText = 'color:#b0b4ba;font-size:12px;font-weight:500';
-    wrap.appendChild(caption);
+    if (extras.action) {
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px';
+      header.appendChild(caption);
+      header.appendChild(extras.action);
+      wrap.appendChild(header);
+    } else {
+      wrap.appendChild(caption);
+    }
     wrap.appendChild(control);
     return wrap;
   }
@@ -398,7 +436,323 @@
     return field;
   }
 
+  function joinSpeechText(...parts) {
+    return parts
+      .map((part) => String(part || '').trim())
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  function pickRecorderMime() {
+    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+    return RECORDER_MIME_CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+  }
+
+  const ICON_BTN_CSS =
+    'display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:8px;background:transparent;color:#2781f6;cursor:pointer';
+
+  function createMicButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerHTML = MIC_ICON;
+    button.setAttribute('aria-label', 'Gravar assunto');
+    button.setAttribute('title', 'Gravar assunto');
+    button.style.cssText = ICON_BTN_CSS;
+    return button;
+  }
+
+  function createPlayButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.innerHTML = PLAY_ICON;
+    button.hidden = true;
+    button.setAttribute('aria-label', 'Ouvir áudio');
+    button.setAttribute('title', 'Ouvir áudio');
+    button.style.cssText = ICON_BTN_CSS;
+    return button;
+  }
+
+  function createTranscribeButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Transcrever';
+    button.hidden = true;
+    button.style.cssText =
+      'height:28px;padding:0 10px;border:0;border-radius:8px;background:#2781f6;color:#fff;cursor:pointer;font:500 12px Inter,system-ui,sans-serif';
+    return button;
+  }
+
+  function createAssuntoPlayback(playButton, onPlayError) {
+    let objectUrl = null;
+    let player = null;
+    let busy = false;
+
+    function setPlayAppearance(isPlaying) {
+      playButton.innerHTML = isPlaying ? PAUSE_ICON : PLAY_ICON;
+      playButton.setAttribute('aria-label', isPlaying ? 'Pausar reprodução' : 'Ouvir áudio');
+      playButton.setAttribute('title', isPlaying ? 'Pausar' : 'Ouvir áudio');
+    }
+
+    function ensurePlayer() {
+      if (player) return player;
+      player = document.createElement('audio');
+      player.preload = 'metadata';
+      player.hidden = true;
+      player.addEventListener('play', () => setPlayAppearance(true));
+      player.addEventListener('pause', () => setPlayAppearance(false));
+      player.addEventListener('ended', () => {
+        player.currentTime = 0;
+        setPlayAppearance(false);
+      });
+      playButton.insertAdjacentElement('afterend', player);
+      return player;
+    }
+
+    function stop() {
+      if (!player) return;
+      player.pause();
+      player.currentTime = 0;
+      setPlayAppearance(false);
+    }
+
+    function revoke() {
+      stop();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+      if (player) player.removeAttribute('src');
+    }
+
+    function attach(file) {
+      revoke();
+      objectUrl = URL.createObjectURL(file);
+      ensurePlayer().src = objectUrl;
+    }
+
+    function toggle() {
+      if (!objectUrl || busy) return;
+      const audio = ensurePlayer();
+      if (audio.paused) {
+        audio.play().catch(() => onPlayError('Não foi possível reproduzir o áudio'));
+        return;
+      }
+      audio.pause();
+    }
+
+    function setBusy(nextBusy) {
+      busy = nextBusy;
+      playButton.disabled = nextBusy;
+      if (nextBusy) stop();
+    }
+
+    function dispose() {
+      revoke();
+      player?.remove();
+      player = null;
+    }
+
+    playButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggle();
+    });
+
+    return { attach, stop, revoke, setBusy, dispose };
+  }
+
+  function setMicAppearance(button, mode) {
+    const recording = mode === 'recording';
+    const paused = mode === 'paused';
+    button.innerHTML = recording ? PAUSE_ICON : MIC_ICON;
+    button.style.color = recording ? '#e54666' : '#2781f6';
+    button.style.background = recording ? 'rgba(229,70,102,0.12)' : 'transparent';
+    button.setAttribute('aria-pressed', String(recording));
+    button.setAttribute(
+      'aria-label',
+      recording ? 'Pausar áudio' : paused ? 'Continuar gravação' : 'Gravar assunto'
+    );
+    button.setAttribute('title', recording ? 'Pausar' : paused ? 'Continuar' : 'Gravar assunto');
+  }
+
+  function bindAssuntoDictation(textarea, micButton, playButton, transcribeButton, { max, onError }) {
+    const playback = createAssuntoPlayback(playButton, onError);
+    let recorder = null;
+    let stream = null;
+    let chunks = [];
+    let pendingFile = null;
+    let transcribing = false;
+    let starting = false;
+    let mode = 'idle';
+    let baseText = '';
+    const idlePlaceholder = textarea.placeholder;
+
+    function applyText(extra) {
+      textarea.value = joinSpeechText(baseText, extra).slice(0, max);
+      textarea.dispatchEvent(new Event('input'));
+    }
+
+    function setMode(next) {
+      mode = next;
+      setMicAppearance(micButton, next);
+      const paused = next === 'paused';
+      playButton.hidden = !paused;
+      transcribeButton.hidden = !paused;
+      if (!paused) playback.stop();
+      if (next === 'recording') {
+        textarea.style.outlineColor = '#e54666';
+        textarea.placeholder = 'Ouvindo… fale o assunto';
+        return;
+      }
+      if (paused) {
+        textarea.style.outlineColor = '#2781f6';
+        textarea.placeholder = 'Áudio pausado. Ouça ou transcreva.';
+        return;
+      }
+      textarea.style.outlineColor = '#2e2d32';
+      textarea.placeholder = idlePlaceholder;
+    }
+
+    function stopTracks() {
+      stream?.getTracks().forEach((track) => track.stop());
+      stream = null;
+    }
+
+    function resetRecorder() {
+      recorder = null;
+      chunks = [];
+      stopTracks();
+    }
+
+    function resetSession() {
+      playback.revoke();
+      pendingFile = null;
+      resetRecorder();
+      setMode('idle');
+    }
+
+    function buildPendingFile() {
+      const mime = recorder?.mimeType || chunks[0]?.type || 'audio/webm';
+      const blob = new Blob(chunks, { type: mime.split(';')[0] });
+      if (!blob.size) return null;
+      const extension = mime.includes('mp4') || mime.includes('m4a') ? 'm4a' : 'webm';
+      return new File([blob], `audio-${Date.now()}.${extension}`, { type: blob.type });
+    }
+
+    async function startRecorder() {
+      if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Este navegador não grava áudio');
+      }
+      playback.revoke();
+      pendingFile = null;
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      const mime = pickRecorderMime();
+      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        pendingFile = buildPendingFile();
+        resetRecorder();
+        if (!pendingFile) {
+          setMode('idle');
+          onError('Não foi possível gravar o áudio');
+          return;
+        }
+        playback.attach(pendingFile);
+        setMode('paused');
+      };
+      baseText = textarea.value;
+      recorder.start();
+      setMode('recording');
+    }
+
+    function pauseRecorder() {
+      if (!recorder || recorder.state !== 'recording') return;
+      recorder.stop();
+    }
+
+    async function transcribeAudio() {
+      if (transcribing) return;
+      if (mode === 'recording') {
+        pauseRecorder();
+        return;
+      }
+      if (!pendingFile) {
+        onError('Grave e pause o áudio antes de transcrever');
+        return;
+      }
+      transcribing = true;
+      playback.setBusy(true);
+      transcribeButton.disabled = true;
+      micButton.disabled = true;
+      textarea.placeholder = 'Transcrevendo…';
+      try {
+        const payload = await apiPostFile('/transcribe', pendingFile);
+        applyText(payload.text || '');
+        playback.revoke();
+        pendingFile = null;
+        setMode('idle');
+      } catch (err) {
+        setMode(pendingFile ? 'paused' : 'idle');
+        onError(err.message || 'Não foi possível transcrever o áudio');
+      } finally {
+        transcribing = false;
+        playback.setBusy(false);
+        transcribeButton.disabled = false;
+        micButton.disabled = false;
+        if (mode === 'idle') textarea.placeholder = idlePlaceholder;
+      }
+    }
+
+    async function onMicClick() {
+      if (transcribing || starting) return;
+      if (mode === 'recording') {
+        pauseRecorder();
+        return;
+      }
+      starting = true;
+      try {
+        await startRecorder();
+      } catch (err) {
+        resetSession();
+        if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+          onError('Permita o microfone no navegador para gravar');
+        } else {
+          onError(err.message || 'Não foi possível iniciar o microfone');
+        }
+      } finally {
+        starting = false;
+      }
+    }
+
+    micButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onMicClick();
+    });
+    transcribeButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      transcribeAudio();
+    });
+
+    return () => {
+      if (recorder && recorder.state !== 'inactive') {
+        try {
+          recorder.onstop = null;
+          recorder.stop();
+        } catch {
+          /* já parado */
+        }
+      }
+      stopTracks();
+      playback.dispose();
+    };
+  }
+
   function closeCreateDialog() {
+    stopCreateDialogMic();
+    stopCreateDialogMic = () => {};
     const dialog = document.getElementById(DIALOG_ID);
     if (dialog) dialog.remove();
   }
@@ -465,7 +819,19 @@
     const summary = styledControl('input', { placeholder: 'Resumo do caso', maxLength: RESUMO_MAX });
     const summaryField = attachCharCounter(fieldBlock('Resumo (opcional)', summary), summary, RESUMO_MAX);
     const assunto = styledTextarea({ placeholder: 'Motivo da abertura do chamado', maxLength: ASSUNTO_MAX });
-    const assuntoField = attachCharCounter(fieldBlock('Assunto', assunto), assunto, ASSUNTO_MAX);
+    const assuntoMic = createMicButton();
+    const assuntoPlay = createPlayButton();
+    const assuntoTranscribe = createTranscribeButton();
+    const assuntoActions = document.createElement('div');
+    assuntoActions.style.cssText = 'display:flex;align-items:center;gap:8px';
+    assuntoActions.appendChild(assuntoMic);
+    assuntoActions.appendChild(assuntoPlay);
+    assuntoActions.appendChild(assuntoTranscribe);
+    const assuntoField = attachCharCounter(
+      fieldBlock('Assunto', assunto, { action: assuntoActions }),
+      assunto,
+      ASSUNTO_MAX
+    );
     const priority = styledControl('select', {
       options: [
         { value: '', label: 'Nenhuma' },
@@ -563,6 +929,13 @@
     card.appendChild(actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
+    stopCreateDialogMic = bindAssuntoDictation(assunto, assuntoMic, assuntoPlay, assuntoTranscribe, {
+      max: ASSUNTO_MAX,
+      onError: (message) => {
+        error.textContent = message;
+        error.style.display = 'block';
+      }
+    });
     summary.focus();
 
     apiGet(`/conversations/${conversationId}/contact-attributes`)

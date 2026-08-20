@@ -128,6 +128,12 @@ export const api = {
     const query = accountId ? `?account_id=${encodeURIComponent(accountId)}` : '';
     return `${API_ROOT}/chamados/${encodeURIComponent(number)}/attachments/${attachmentId}${query}`;
   },
+  transcribe: (file) => {
+    const body = new FormData();
+    body.append('body', '');
+    body.append('files[]', file);
+    return request('/transcribe', { method: 'POST', body });
+  },
   destroy: (number) => request(`/chamados/${encodeURIComponent(number)}`, { method: 'DELETE' }),
   restore: (number) =>
     request(`/chamados/${encodeURIComponent(number)}/restore`, { method: 'POST' }),

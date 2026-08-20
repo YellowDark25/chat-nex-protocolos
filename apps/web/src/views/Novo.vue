@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import DictationButton from '../components/DictationButton.vue';
 import SelectDropdown from '../components/SelectDropdown.vue';
 import { api } from '../api.js';
 
@@ -69,11 +70,14 @@ onMounted(() => {
         <input v-model="form.subject" placeholder="Resumo do caso" maxlength="255" />
         <span class="muted" style="align-self: flex-end; font-size: 12px">{{ form.subject.length }}/255</span>
       </label>
-      <label class="field">
-        <span>Assunto</span>
+      <div class="field">
+        <span class="field-heading">
+          Assunto
+          <DictationButton v-model="form.assunto" :max-length="2000" @error="error = $event" />
+        </span>
         <textarea v-model="form.assunto" placeholder="Motivo da abertura do chamado" maxlength="2000" rows="4"></textarea>
         <span class="muted" style="align-self: flex-end; font-size: 12px">{{ form.assunto.length }}/2000</span>
-      </label>
+      </div>
       <label class="field">
         <span>Prioridade</span>
         <SelectDropdown v-model="form.priority" :options="priorityOptions" />

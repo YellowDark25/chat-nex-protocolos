@@ -318,6 +318,24 @@ module Nex
       serialize_detail(find_by_number!(number))
     end
 
+    def transcribe_upload(file)
+      raise Nex::Error, 'Transcrição indisponível' unless GroqClient.enabled?
+      raise Nex::Error, 'Áudio obrigatório' unless file && file[:tempfile]
+
+      content_type = media_type(file)
+      raise Nex::Error, 'Envie um áudio' unless content_type.start_with?('audio/')
+
+      path = file[:tempfile].path
+      raise Nex::Error, 'Áudio deve ter no máximo 10 MB' if File.size(path) > AUDIO_MAX_BYTES
+
+      filename = file[:filename].to_s
+      filename = 'audio.webm' if filename.empty?
+      text = GroqClient.new.transcribe(path: path, filename: filename, content_type: content_type)
+      raise Nex::Error, 'Não foi possível transcrever o áudio' if text.to_s.strip.empty?
+
+      { text: text }
+    end
+
     def search_conversations(query)
       raise Nex::Error, 'Busca vazia' if query.to_s.strip.empty?
 

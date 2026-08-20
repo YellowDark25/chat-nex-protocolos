@@ -51,7 +51,18 @@ module Nex
       end
 
       def uploaded_files(*keys)
-        keys.flat_map { |key| Array(params[key]) }.select { |item| item.is_a?(Hash) && item[:tempfile] }
+        keys.flat_map { |key| Array(params[key]) }.filter_map { |item| upload_hash(item) }
+      end
+
+      def upload_hash(item)
+        return item if item.is_a?(Hash) && item[:tempfile]
+        return unless item.respond_to?(:tempfile) && item.tempfile
+
+        {
+          tempfile: item.tempfile,
+          filename: item.respond_to?(:original_filename) ? item.original_filename : 'audio.webm',
+          type: item.respond_to?(:content_type) ? item.content_type : nil
+        }
       end
     end
 
@@ -73,6 +84,10 @@ module Nex
 
     get '/users' do
       json(items: service.list_users)
+    end
+
+    post '/transcribe' do
+      json(service.transcribe_upload(uploaded_files(:file, :files, :'files[]').first))
     end
 
     get '/chamados' do
